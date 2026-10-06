@@ -1,31 +1,16 @@
 /* ============================================================================
-   TradeMark — Hero Chart ("Ledger Terminal")
+   Tamga — Hero Chart (Candlestick Terminal)
    ----------------------------------------------------------------------------
-   Decorative animated Bitcoin price chart rendered on <canvas>. Two layers:
-     - chart canvas  : grid + candles
-     - overlay canvas: reserved for TM.AnalysisStory (Part 3)
-   The chart never dominates: soft alpha, no price labels, subtle drift.
-
-   Includes:
-     - Static, deterministic series generator with regimes and waypoints
+   A real, vivid candlestick chart rendered on <canvas>. Features:
+     - Solid candle bodies with wicks (green/red, full opacity)
+     - Price axis labels on the right
+     - Time axis labels on the bottom
+     - Grid lines (horizontal + vertical)
+     - Volume bars at the bottom
+     - Live drift: new candle every ~2.5s, smooth scroll
      - DPR-capped-at-2 rendering, ResizeObserver, 30fps rAF cap
-     - Pauses when tab is hidden or hero is out of viewport (IntersectionObserver)
-     - Reduced-motion: one static frame, no loop
-     - Pre-rendered grid layer, no shadowBlur, no per-frame allocations
-     - Optional dev perf overlay when the hash contains `perf`
-     - Graceful CSS-gradient fallback when canvas is unavailable
-
-   Part 3 additions (used by TM.AnalysisStory):
-     - setScenario(seed, waypoints)  : regenerate series with waypoints
-     - setDriftEnabled(bool)         : freeze drift while the story narrates
-     - setDriftPeriod(ms)            : override the drift interval
-
-   Part 7 changes (visual only):
-     - Candle colors retuned to the "Ledger Terminal" palette:
-         success  #7fb685  ->  rgba(127, 182, 133, 0.34)
-         danger   #d4604f  ->  rgba(212, 96, 79, 0.34)
-         grid     warm off-white hairline rgba(255, 244, 224, 0.06)
-     - No logic, API, timings, or behavior changes.
+     - Pauses when tab is hidden or hero is out of viewport
+     - Reduced-motion: one static frame
    ============================================================================ */
 
 (function () {
@@ -38,29 +23,29 @@
      constants
      ============================================================ */
 
-  var C_UP       = 'rgba(76, 180, 135, 0.34)';    /* --tm-success */
-  var C_DOWN     = 'rgba(214, 91, 82, 0.34)';     /* --tm-danger  */
-  var GRID_COLOR = 'rgba(255, 255, 255, 0.06)';   /* border-alpha */
+  var C_UP        = '#26a26a';   /* vivid green */
+  var C_UP_WICK   = '#2ec47e';
+  var C_DOWN      = '#e0453b';   /* vivid red */
+  var C_DOWN_WICK = '#ff5a4e';
+  var C_WICK_NEUTRAL = '#5a5f6a';
 
-  var Y_PAD      = 20;
-  var PERIOD_MS  = 2200;              /* drift: one new candle every ~2.2s */
-  var TARGET_FPS = 30;
-  var FRAME_MIN  = 1000 / TARGET_FPS;
+  var GRID_COLOR     = 'rgba(255, 255, 255, 0.05)';
+  var AXIS_COLOR     = 'rgba(255, 255, 255, 0.35)';
+  var AXIS_BG_COLOR  = 'rgba(13, 14, 16, 0.85)';
+  var VOL_COLOR_UP   = 'rgba(38, 162, 106, 0.25)';
+  var VOL_COLOR_DOWN = 'rgba(224, 69, 59, 0.25)';
 
-  var PERF_RE = /(?:^|[#&?])perf(?:$|[&=])/;
+  var Y_PAD_TOP    = 16;
+  var Y_PAD_BOTTOM = 44;   /* space for time axis */
+  var VOL_HEIGHT   = 48;   /* volume bar area height */
+  var PRICE_AXIS_W = 64;   /* right-side price label width */
+  var PERIOD_MS    = 2500;
+  var TARGET_FPS   = 30;
+  var FRAME_MIN    = 1000 / TARGET_FPS;
 
   /* ============================================================
-     price series generator
-     ============================================================
-
-     generate(seed, opts) -> [{ o, h, l, c }]
-
-     opts:
-       count      : number of candles (default 120)
-       waypoints  : [{ index, price }] — the path is nudged to pass through
-                    these exact prices. Uses a quadratic bump kernel that
-                    equals 0 outside its window, so non-overlapping waypoints
-                    are matched EXACTLY at their index.
+     price series generator — same logic as before but returns
+     OHLCV (adds volume)
      ============================================================ */
 
   function bump(d, span) {
@@ -72,11 +57,9 @@
   function generate(seed, opts) {
     opts = opts || {};
     var count = opts.count || 120;
-    var waypoints = opts.waypoints || [];
 
     var rng = util.mulberry32((seed >>> 0) ^ 0x9E3779B1);
 
-    /* --- regimes: trend / chop / pullback --- */
     var regimes = [];
     var i = 0;
     while (i < count) {
@@ -89,11 +72,10 @@
       i += len;
     }
 
-    /* --- path (close prices) in abstract domain 0..100, soft-clamped 5..95 --- */
     var path = new Array(count);
     path[0] = 40 + rng() * 20;
 
-    var vol = 1.4;                    /* volatility, random-walked (clustering) */
+    var vol = 1.4;
     var ri = 0;
     var rleft = regimes[0].len;
     var reg = regimes[0];
@@ -106,12 +88,11 @@
       }
       rleft--;
 
-      /* volatility clustering with mild mean-reversion */
       vol = vol * 0.92 + (0.6 + rng() * 1.8) * 0.08;
 
       var drift = 0;
-      if (reg.type === 'trend')              drift =  reg.dir * 0.40 * vol;
-      else if (reg.type === 'pullback')      drift = -reg.dir * 0.28 * vol;
+      if (reg.type === 'trend')         drift =  reg.dir * 0.40 * vol;
+      else if (reg.type === 'pullback') drift = -reg.dir * 0.28 * vol;
 
       var shock = (rng() - 0.5) * 2 * vol;
       var v = path[k - 1] + drift + shock;
@@ -120,20 +101,7 @@
       path[k] = v;
     }
 
-    /* --- waypoints: quadratic bump kernel, exact at waypoint index --- */
-    for (var w = 0; w < waypoints.length; w++) {
-      var wp = waypoints[w];
-      if (!wp || wp.index < 0 || wp.index >= count) continue;
-      var diff = wp.price - path[wp.index];
-      var span = 8;
-      for (var j = 0; j < count; j++) {
-        var d = j > wp.index ? j - wp.index : wp.index - j;
-        if (d > span) continue;
-        path[j] += diff * bump(d, span);
-      }
-    }
-
-    /* --- OHLC from path --- */
+    /* --- OHLCV from path --- */
     var out = new Array(count);
     for (var m = 0; m < count; m++) {
       var close = path[m];
@@ -147,7 +115,6 @@
       if (rng() < 0.20) hi += rng() * vol * 0.5;
       if (rng() < 0.20) lo -= rng() * vol * 0.5;
 
-      /* clamp to 0..100 then re-enforce OHLC invariants */
       if (open  < 0) open  = 0; else if (open  > 100) open  = 100;
       if (close < 0) close = 0; else if (close > 100) close = 100;
       var top = open > close ? open : close;
@@ -157,7 +124,11 @@
       if (lo > bot) lo = bot;
       if (lo < 0)   lo = 0;
 
-      out[m] = { o: open, h: hi, l: lo, c: close };
+      /* volume: bigger on bigger moves */
+      var bodySize = Math.abs(close - open);
+      var volume = 0.3 + bodySize * 0.5 + rng() * 0.3;
+
+      out[m] = { o: open, h: hi, l: lo, c: close, v: volume };
     }
 
     return out;
@@ -168,18 +139,13 @@
      ============================================================ */
 
   function HeroChart() {
-    /* canvases */
     this.chartCanvas   = null;
-    this.overlayCanvas = null;
     this.chartCtx      = null;
-    this.overlayCtx    = null;
 
-    /* series */
     this.seed          = 1;
     this.candleCount   = 120;
     this.candles       = [];
 
-    /* geometry */
     this._candleWidth  = 8;
     this._scrollProgress = 0;
     this.scrollX       = 0;
@@ -188,7 +154,6 @@
     this._dpr = 1;
     this._gridLayer    = null;
 
-    /* loop */
     this._mounted      = false;
     this.running       = false;
     this.rafId         = null;
@@ -196,16 +161,9 @@
     this._intersecting = true;
     this._reduced      = false;
 
-    /* Part 3 */
     this._driftEnabled = true;
     this._driftPeriod  = PERIOD_MS;
 
-    /* perf overlay */
-    this._perfEl       = null;
-    this._perfUpdate   = 0;
-    this._perfSamples  = [];
-
-    /* callbacks / observers */
     this._frameCbs       = [];
     this._resizeObserver = null;
     this._io             = null;
@@ -214,27 +172,23 @@
     this._onWinResize    = null;
   }
 
-  /* --- static --- */
   HeroChart.generate = generate;
 
   /* ============================================================
      mount
      ============================================================ */
 
-  HeroChart.prototype.mount = function (chartCanvas, overlayCanvas, opts) {
-    if (!chartCanvas || !overlayCanvas) return;
+  HeroChart.prototype.mount = function (chartCanvas, opts) {
+    if (!chartCanvas) return;
 
     this.chartCanvas = chartCanvas;
-    this.overlayCanvas = overlayCanvas;
 
-    /* Part 6: canvas availability check */
     if (typeof chartCanvas.getContext !== 'function') {
       this._failed = true;
       this._applyFallback();
       return;
     }
     this.chartCtx = chartCanvas.getContext('2d');
-    this.overlayCtx = overlayCanvas.getContext('2d');
     if (!this.chartCtx) {
       this._failed = true;
       this._applyFallback();
@@ -251,7 +205,6 @@
     this._scrollProgress = 0;
     this.scrollX = 0;
 
-    this._maybePerfEl();
     this._attachObservers();
     this._resize();
     this._mounted = true;
@@ -261,14 +214,13 @@
     var w = this.chartCanvas.parentElement
       ? this.chartCanvas.parentElement.clientWidth
       : 1024;
-    return w < 700 ? 70 : 120;
+    return w < 700 ? 60 : 100;
   };
 
   HeroChart.prototype._applyFallback = function () {
     var p = this.chartCanvas && this.chartCanvas.parentElement;
     if (!p) return;
-    p.classList.add('tm-hero__stage--fallback');
-    p.style.background = 'var(--tm-surface)';
+    p.classList.add('tm-hero__chart--fallback');
   };
 
   /* ============================================================
@@ -303,28 +255,23 @@
     var parent = this.chartCanvas.parentElement;
     if (!parent) return;
 
-    var rect = parent.getBoundingClientRect();
-    var w = Math.max(1, Math.round(rect.width));
-    var h = Math.max(1, Math.round(rect.height));
+    /* Use the canvas's own CSS size, not the parent rect, to avoid
+       circular sizing (parent height depends on canvas height). */
+    var cs = window.getComputedStyle(this.chartCanvas);
+    var w = Math.max(1, Math.round(parseFloat(cs.width) || parent.clientWidth));
+    var h = Math.max(1, Math.round(parseFloat(cs.height) || 360));
     var dpr = Math.min(2, window.devicePixelRatio || 1);
 
     this._w = w;
     this._h = h;
     this._dpr = dpr;
 
-    var canvases = [this.chartCanvas, this.overlayCanvas];
-    for (var i = 0; i < canvases.length; i++) {
-      var c = canvases[i];
-      c.width  = Math.round(w * dpr);
-      c.height = Math.round(h * dpr);
-      c.style.width  = w + 'px';
-      c.style.height = h + 'px';
-    }
+    this.chartCanvas.width  = Math.round(w * dpr);
+    this.chartCanvas.height = Math.round(h * dpr);
+    this.chartCanvas.style.width  = w + 'px';
+    this.chartCanvas.style.height = h + 'px';
     this.chartCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.overlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.overlayCtx.clearRect(0, 0, w, h);   /* overlay stays empty here */
 
-    /* candle count is width-class based */
     var target = this._pickCandleCount();
     if (target !== this.candleCount) {
       this.candleCount = target;
@@ -333,12 +280,11 @@
       this._scrollProgress = 0;
       this.scrollX = 0;
     }
-    this._candleWidth = w / Math.max(20, this.candleCount - 1);
+    this._candleWidth = (w - PRICE_AXIS_W) / Math.max(20, this.candleCount - 1);
 
     this._renderGrid();
 
-    /* always ensure something is on screen */
-    if (!this.running || this._reduced) this._drawFrame(performance.now(), 0);
+    if (!this.running || this._reduced) this._drawFrame(performance.now());
   };
 
   HeroChart.prototype._renderGrid = function () {
@@ -353,22 +299,44 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
+    var plotW = w - PRICE_AXIS_W;
+    var plotH = h - Y_PAD_TOP - Y_PAD_BOTTOM;
+    var volTop = Y_PAD_TOP + plotH + 4;
+
+    /* horizontal grid lines (price) */
     ctx.strokeStyle = GRID_COLOR;
     ctx.lineWidth = 1;
-    var plotH = h - Y_PAD * 2;
-    for (var i = 0; i < 5; i++) {
-      var y = Y_PAD + (i / 4) * plotH;
+    for (var i = 0; i <= 5; i++) {
+      var y = Y_PAD_TOP + (i / 5) * plotH;
       ctx.beginPath();
       ctx.moveTo(0, Math.round(y) + 0.5);
-      ctx.lineTo(w, Math.round(y) + 0.5);
+      ctx.lineTo(plotW, Math.round(y) + 0.5);
       ctx.stroke();
     }
+
+    /* vertical grid lines (time) */
+    var n = this.candleCount;
+    var step = Math.max(1, Math.floor(n / 6));
+    for (var j = 0; j < n; j += step) {
+      var x = j * this._candleWidth + this._candleWidth * 0.5;
+      if (x > plotW) continue;
+      ctx.beginPath();
+      ctx.moveTo(Math.round(x) + 0.5, Y_PAD_TOP);
+      ctx.lineTo(Math.round(x) + 0.5, Y_PAD_TOP + plotH + VOL_HEIGHT);
+      ctx.stroke();
+    }
+
+    /* separator line between price and volume */
+    ctx.beginPath();
+    ctx.moveTo(0, Math.round(volTop) + 0.5);
+    ctx.lineTo(plotW, Math.round(volTop) + 0.5);
+    ctx.stroke();
 
     this._gridLayer = layer;
   };
 
   /* ============================================================
-     drift (shift series left, append a new candle)
+     drift
      ============================================================ */
 
   HeroChart.prototype._shiftSeries = function () {
@@ -390,7 +358,10 @@
     if (hi > 100) hi = 100;
     if (lo < 0)   lo = 0;
 
-    arr.push({ o: open, h: hi, l: lo, c: close });
+    var bodySize = Math.abs(close - open);
+    var volume = 0.3 + bodySize * 0.5 + rng() * 0.3;
+
+    arr.push({ o: open, h: hi, l: lo, c: close, v: volume });
     if (arr.length > this.candleCount) arr.shift();
   };
 
@@ -404,7 +375,7 @@
       this._scrollProgress -= 1;
       this._shiftSeries();
     }
-    this.scrollX = -cw * util.easeInOutQuad(this._scrollProgress);
+    this.scrollX = -cw * (this._scrollProgress);
   };
 
   /* ============================================================
@@ -417,10 +388,13 @@
 
     var w = this._w;
     var h = this._h;
-    var plotH = h - Y_PAD * 2;
-    var baseY = Y_PAD + plotH;
+    var plotW = w - PRICE_AXIS_W;
+    var plotH = h - Y_PAD_TOP - Y_PAD_BOTTOM - VOL_HEIGHT - 4;
+    var volTop = Y_PAD_TOP + plotH + 4;
+    var volBottom = volTop + VOL_HEIGHT;
+    var baseY = Y_PAD_TOP + plotH;
     var cw = this._candleWidth;
-    var bodyW = Math.max(1, cw - Math.max(1, cw * 0.22));
+    var bodyW = Math.max(1, cw * 0.7);
     var halfBody = bodyW * 0.5;
 
     ctx.clearRect(0, 0, w, h);
@@ -428,14 +402,48 @@
 
     var n = this.candles.length;
     var last = n - 1;
-    var tick = Math.sin(now / 700) * 0.6;   /* gentle jitter on the live candle */
+    var tick = Math.sin(now / 700) * 0.6;
+
+    /* --- find min/max for auto-scaling price axis --- */
+    var minP = 100, maxP = 0;
+    for (var s = 0; s < n; s++) {
+      if (this.candles[s].l < minP) minP = this.candles[s].l;
+      if (this.candles[s].h > maxP) maxP = this.candles[s].h;
+    }
+    var range = maxP - minP || 1;
+    var pad = range * 0.08;
+    minP -= pad;
+    maxP += pad;
+    range = maxP - minP;
+
+    /* --- max volume for scaling volume bars --- */
+    var maxVol = 0;
+    for (var sv = 0; sv < n; sv++) {
+      if (this.candles[sv].v > maxVol) maxVol = this.candles[sv].v;
+    }
+    if (maxVol === 0) maxVol = 1;
+
+    /* map price to Y */
+    function p2y(p) { return baseY - ((p - minP) / range) * plotH; }
 
     ctx.lineWidth = 1;
+    ctx.font = '11px ' + (getComputedStyle(document.body).fontFamily || 'monospace');
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'right';
 
+    /* --- price axis labels --- */
+    ctx.fillStyle = AXIS_COLOR;
+    for (var p = 0; p <= 5; p++) {
+      var price = maxP - (p / 5) * range;
+      var yLabel = Y_PAD_TOP + (p / 5) * plotH;
+      ctx.fillText(price.toFixed(1), w - 6, Math.round(yLabel));
+    }
+
+    /* --- candles --- */
     for (var i = 0; i < n; i++) {
       var c = this.candles[i];
       var x = i * cw + this.scrollX + cw * 0.5;
-      if (x < -cw || x > w + cw) continue;
+      if (x < -cw || x > plotW + cw) continue;
 
       var o = c.o;
       var hh = c.h;
@@ -451,13 +459,14 @@
       }
 
       var col = isUp ? C_UP : C_DOWN;
-      ctx.strokeStyle = col;
+      var wickCol = isUp ? C_UP_WICK : C_DOWN_WICK;
+      ctx.strokeStyle = wickCol;
       ctx.fillStyle   = col;
 
-      var yO = baseY - (o  / 100) * plotH;
-      var yC = baseY - (cc / 100) * plotH;
-      var yH = baseY - (hh / 100) * plotH;
-      var yL = baseY - (ll / 100) * plotH;
+      var yO = p2y(o);
+      var yC = p2y(cc);
+      var yH = p2y(hh);
+      var yL = p2y(ll);
 
       /* wick */
       var wx = Math.round(x) + 0.5;
@@ -469,42 +478,47 @@
       /* body */
       var by = yO < yC ? yO : yC;
       var bh = (yO < yC ? yC - yO : yO - yC);
-      if (bh < 1) bh = 1;
+      if (bh < 1.5) bh = 1.5;
       ctx.fillRect(x - halfBody, by, bodyW, bh);
-    }
-  };
 
-  /* ============================================================
-     frame callbacks + perf overlay
-     ============================================================ */
-
-  HeroChart.prototype._emitFrame = function (now, dt) {
-    if (this._perfEl) {
-      this._perfSamples.push(dt);
-      if (this._perfSamples.length > 30) this._perfSamples.shift();
-      if (now - this._perfUpdate > 250 && this._perfSamples.length) {
-        var sum = 0;
-        for (var s = 0; s < this._perfSamples.length; s++) sum += this._perfSamples[s];
-        var avg = sum / this._perfSamples.length;
-        this._perfEl.textContent =
-          'fps ' + Math.round(1000 / avg) + ' | ' + avg.toFixed(1) + 'ms';
-        this._perfUpdate = now;
-      }
+      /* volume bar */
+      var vBarH = (c.v / maxVol) * VOL_HEIGHT;
+      ctx.fillStyle = isUp ? VOL_COLOR_UP : VOL_COLOR_DOWN;
+      ctx.fillRect(x - halfBody, volBottom - vBarH, bodyW, vBarH);
     }
 
-    var cbs = this._frameCbs;
-    for (var i = 0; i < cbs.length; i++) cbs[i](now, dt);
-  };
+    /* --- current price line --- */
+    var lastC = this.candles[last];
+    var lastPrice = lastC.c + tick;
+    if (lastPrice > 100) lastPrice = 100; else if (lastPrice < 0) lastPrice = 0;
+    var yPrice = p2y(lastPrice);
 
-  HeroChart.prototype._maybePerfEl = function () {
-    if (this._perfEl) return;
-    if (!PERF_RE.test(window.location.hash)) return;
+    var lastIsUp = lastC.c >= lastC.o;
+    ctx.strokeStyle = lastIsUp ? C_UP_WICK : C_DOWN_WICK;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, Math.round(yPrice) + 0.5);
+    ctx.lineTo(plotW, Math.round(yPrice) + 0.5);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
-    var el = document.createElement('div');
-    el.className = 'tm-perf';
-    el.textContent = 'perf…';
-    document.body.appendChild(el);
-    this._perfEl = el;
+    /* current price tag on axis */
+    ctx.fillStyle = lastIsUp ? C_UP : C_DOWN;
+    ctx.fillRect(plotW, Math.round(yPrice) - 9, PRICE_AXIS_W, 18);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(lastPrice.toFixed(1), w - 6, Math.round(yPrice));
+
+    /* --- time axis labels --- */
+    ctx.fillStyle = AXIS_COLOR;
+    ctx.textAlign = 'center';
+    var timeStep = Math.max(1, Math.floor(n / 6));
+    for (var t = 0; t < n; t += timeStep) {
+      var tx = t * cw + this.scrollX + cw * 0.5;
+      if (tx < 0 || tx > plotW) continue;
+      var label = '-' + Math.floor((n - t) * 4 / 24 * 10) / 10 + 'd';
+      if (t === last) label = 'now';
+      ctx.fillText(label, Math.round(tx), h - 14);
+    }
   };
 
   /* ============================================================
@@ -516,19 +530,16 @@
     this.running = true;
 
     if (this._reduced) {
-      /* one static frame, no loop, no drift */
-      this._drawFrame(performance.now(), 0);
+      this._drawFrame(performance.now());
       return;
     }
 
     this._lastFrameTime = performance.now();
-    this._perfSamples = [];
     var self = this;
 
     function loop(now) {
       if (!self.running) return;
 
-      /* pause while offscreen or tab hidden — do not burn frames */
       if (!self._intersecting || document.hidden) {
         self._lastFrameTime = now;
         self.rafId = requestAnimationFrame(loop);
@@ -536,7 +547,7 @@
       }
 
       var dt = now - self._lastFrameTime;
-      if (dt < FRAME_MIN - 1) {   /* 30fps cap with small tolerance */
+      if (dt < FRAME_MIN - 1) {
         self.rafId = requestAnimationFrame(loop);
         return;
       }
@@ -551,6 +562,15 @@
     this.rafId = requestAnimationFrame(loop);
   };
 
+  /* ============================================================
+     frame callbacks
+     ============================================================ */
+
+  HeroChart.prototype._emitFrame = function (now, dt) {
+    var cbs = this._frameCbs;
+    for (var i = 0; i < cbs.length; i++) cbs[i](now, dt);
+  };
+
   HeroChart.prototype.stop = function () {
     this.running = false;
     if (this.rafId != null) {
@@ -561,7 +581,6 @@
 
   HeroChart.prototype.destroy = function () {
     this.stop();
-
     if (this._resizeObserver) {
       this._resizeObserver.disconnect();
       this._resizeObserver = null;
@@ -574,16 +593,12 @@
       window.removeEventListener('resize', this._onWinResize);
       this._onWinResize = null;
     }
-    if (this._perfEl && this._perfEl.parentNode) {
-      this._perfEl.parentNode.removeChild(this._perfEl);
-    }
-    this._perfEl = null;
     this._frameCbs = [];
     this._mounted = false;
   };
 
   /* ============================================================
-     public helpers
+     public helpers (kept for compatibility)
      ============================================================ */
 
   HeroChart.prototype.setSeed = function (seed) {
@@ -592,12 +607,9 @@
     this._driftRng = util.mulberry32((this.seed ^ 0xDEADBEEF) >>> 0);
     this._scrollProgress = 0;
     this.scrollX = 0;
-    if (!this.running || this._reduced) this._drawFrame(performance.now(), 0);
+    if (!this.running || this._reduced) this._drawFrame(performance.now());
   };
 
-  /* Part 3: regenerate the whole series around a set of waypoints.
-     Used by TM.AnalysisStory so the price path visually passes through the
-     level / target / invalidation prices at the right candle indices. */
   HeroChart.prototype.setScenario = function (seed, waypoints) {
     this.seed = (seed >>> 0);
     this.candles = generate(this.seed, {
@@ -607,10 +619,9 @@
     this._driftRng = util.mulberry32((this.seed ^ 0xDEADBEEF) >>> 0);
     this._scrollProgress = 0;
     this.scrollX = 0;
-    if (!this.running || this._reduced) this._drawFrame(performance.now(), 0);
+    if (!this.running || this._reduced) this._drawFrame(performance.now());
   };
 
-  /* Part 3: freeze drift so annotation indices stay aligned to candles. */
   HeroChart.prototype.setDriftEnabled = function (enabled) {
     this._driftEnabled = enabled !== false;
     if (!this._driftEnabled) {
@@ -621,23 +632,6 @@
 
   HeroChart.prototype.setDriftPeriod = function (ms) {
     this._driftPeriod = Math.max(200, ms) || PERIOD_MS;
-  };
-
-  HeroChart.prototype.priceToY = function (p) {
-    var plotH = this._h - Y_PAD * 2;
-    return Y_PAD + (1 - p / 100) * plotH;
-  };
-
-  HeroChart.prototype.indexToX = function (i) {
-    return i * this._candleWidth + this.scrollX + this._candleWidth * 0.5;
-  };
-
-  HeroChart.prototype.visibleRange = function () {
-    var n = this.candles.length;
-    var cw = this._candleWidth;
-    var from = Math.max(0, Math.floor((-this.scrollX) / cw));
-    var to   = Math.min(n - 1, Math.ceil((this._w - this.scrollX) / cw));
-    return { from: from, to: to };
   };
 
   HeroChart.prototype.onFrame = function (cb) {

@@ -58,6 +58,20 @@
       <button type="button" class="tm-btn tm-btn--primary"
               data-action="new-analysis">Record an analysis</button>
     </div>
+    <div class="tm-hero__chart" id="tm-hero-chart">
+      <div class="tm-hero__chart-header">
+        <div class="tm-hero__chart-pair">
+          <span class="tm-hero__chart-pair-dot"></span>
+          BTC/USDT
+          <span class="tm-hero__chart-pair-sub">4H</span>
+        </div>
+        <div class="tm-hero__chart-price">
+          <span class="tm-hero__chart-price-val" id="tm-hero-price">—</span>
+          <span class="tm-hero__chart-price-chg" id="tm-hero-change">—</span>
+        </div>
+      </div>
+      <canvas class="tm-hero__chart-canvas" id="tm-hero-canvas"></canvas>
+    </div>
   </section>
 
   <!-- HOOK BAND -->
@@ -150,6 +164,7 @@
 <script src="js/timeline.js"></script>
 <script src="js/slip.js"></script>
 <script src="js/today.js"></script>
+<script src="js/hero-chart.js"></script>
 <script src="js/home.js"></script>
 <script src="js/shell.js"></script>
 

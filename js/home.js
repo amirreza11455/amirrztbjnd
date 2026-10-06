@@ -30,6 +30,44 @@
   }
 
   /* ------------------------------------------------------------
+     hero chart
+     ------------------------------------------------------------ */
+
+  var _chart = null;
+
+  function mountChart(root) {
+    var canvas = root.querySelector('#tm-hero-canvas');
+    if (!canvas || !TM.HeroChart) return function () {};
+
+    _chart = new TM.HeroChart();
+    _chart.mount(canvas, { seed: 42 });
+    _chart.start();
+
+    var priceEl  = root.querySelector('#tm-hero-price');
+    var changeEl = root.querySelector('#tm-hero-change');
+    var lastClose = null;
+
+    _chart.onFrame(function () {
+      if (!priceEl || !changeEl) return;
+      var candles = _chart.candles;
+      if (!candles || !candles.length) return;
+      var last = candles[candles.length - 1];
+      var first = candles[0];
+      var price = (last.c / 100 * 80000 + 20000).toFixed(0);
+      var pct = ((last.c - first.c) / first.c * 100).toFixed(2);
+      priceEl.textContent = '$' + Number(price).toLocaleString();
+      var up = last.c >= first.c;
+      changeEl.textContent = (up ? '+' : '') + pct + '%';
+      changeEl.className = 'tm-hero__chart-price-chg ' +
+        (up ? 'tm-hero__chart-price-chg--up' : 'tm-hero__chart-price-chg--down');
+    });
+
+    return function () {
+      if (_chart) { _chart.destroy(); _chart = null; }
+    };
+  }
+
+  /* ------------------------------------------------------------
      timeline + slip
      ------------------------------------------------------------ */
 
@@ -159,10 +197,12 @@
       /* Query against the outlet — it now holds every section. */
       wireCtas(outlet);
 
+      var chartOff  = mountChart(outlet);
       var proofOff = mountProof(outlet);
       var todayOff = mountWaiting(outlet);
 
       return function teardown() {
+        if (chartOff) chartOff();
         if (proofOff) proofOff();
         if (todayOff) todayOff();
         _selectedId = null;
