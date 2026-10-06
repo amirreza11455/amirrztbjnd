@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Tamga</title>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/home.css">
+</head>
+<body>
+
+<a class="tm-skip" id="tm-skip" href="#tm-outlet">Skip to content</a>
+
+<header class="tm-topbar">
+  <div class="tm-topbar__inner">
+    <a class="tm-topbar__brand" id="tm-brand" href="#/home"></a>
+
+    <div class="tm-topbar__status" id="tm-status" role="status" aria-live="polite">
+      <span class="tm-status__dot" aria-hidden="true"></span>
+      <span class="tm-status__text"></span>
+    </div>
+
+    <nav class="tm-topbar__nav" id="tm-nav-top" aria-label="Primary"></nav>
+
+    <div class="tm-topbar__actions">
+      <button id="tm-new-btn" class="tm-btn tm-btn--primary" type="button">New analysis</button>
+      <button id="tm-menu-btn" class="tm-iconbtn" type="button"
+              aria-label="Menu" aria-expanded="false" aria-controls="tm-panel">
+        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"
+             fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="tm-outlet" class="tm-main" tabindex="-1"></main>
+
+<nav class="tm-nav" id="tm-nav-bottom" aria-label="Primary"></nav>
+
+<!-- ============================================================
+     Home template
+     ============================================================ -->
+<template id="tm-home-template">
+
+  <!-- HERO -->
+  <section class="tm-hero" aria-labelledby="tm-hero-title">
+    <h1 class="tm-hero__title" id="tm-hero-title">Trade. Analyze. Prove it.</h1>
+    <div class="tm-hero__lede">
+      <p class="tm-hero__sub">
+        Every analysis you write is locked the moment you save it, then graded
+        against what the market actually did.
+      </p>
+      <button type="button" class="tm-btn tm-btn--primary"
+              data-action="new-analysis">Record an analysis</button>
+    </div>
+  </section>
+
+  <!-- HOOK BAND -->
+  <section class="tm-hook" aria-label="Memory versus record">
+    <p class="tm-visually-hidden">
+      Memory drifts from 'might drop' to 'I called the drop'. The Tamga record
+      still says 'might drop'.
+    </p>
+    <div class="tm-hook__panels">
+      <div class="tm-hook__panel">
+        <p class="tm-hook__label">What you remember</p>
+        <div class="tm-hook__stack" aria-hidden="true">
+          <span class="tm-hook__line tm-hook__line--1">BTC might drop.</span>
+          <span class="tm-hook__line tm-hook__line--2">I said BTC would drop.</span>
+          <span class="tm-hook__line tm-hook__line--3">I called the drop.</span>
+        </div>
+      </div>
+      <div class="tm-hook__panel">
+        <p class="tm-hook__label">What Tamga kept</p>
+        <p class="tm-hook__locked">BTC might drop. Resistance at 81.8K, target 80.2K.</p>
+        <p class="tm-hook__meta">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+               aria-hidden="true">
+            <rect x="5" y="10" width="14" height="10" rx="2"/>
+            <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+          </svg>
+          Locked 09:12, never edited
+        </p>
+      </div>
+    </div>
+    <p class="tm-hook__tag">Memory edits itself. The record doesn't.</p>
+    <span class="tm-hook__ex" aria-hidden="true">Illustrative example</span>
+  </section>
+
+  <!-- TIMELINE -->
+  <section class="tm-timeline" aria-labelledby="tm-timeline-caption">
+    <p class="tm-timeline__caption" id="tm-timeline-caption"
+       data-timeline="caption">Your last three days, and what is still open.</p>
+    <div class="tm-timeline__filters" data-timeline="filters"></div>
+    <div class="tm-timeline__scroll" data-timeline="scroll"></div>
+  </section>
+
+  <!-- BELOW: slip + waiting -->
+  <section class="tm-below" aria-label="Selected analysis and waiting items">
+
+    <div class="tm-slip-host" id="tm-slip-host" aria-live="polite"></div>
+
+    <section class="tm-waiting" aria-labelledby="tm-waiting-title">
+      <h2 class="tm-waiting__title" id="tm-waiting-title">Waiting on you</h2>
+      <div class="tm-waiting__rows" id="tm-waiting-rows"></div>
+    </section>
+
+  </section>
+
+</template>
+
+<!-- ============================================================
+     Side panel
+     ============================================================ -->
+<div id="tm-panel-backdrop" class="tm-panel-backdrop" aria-hidden="true"></div>
+<aside id="tm-panel" class="tm-panel" role="dialog" aria-modal="true"
+       aria-label="Menu" aria-hidden="true">
+  <div class="tm-panel__head">
+    <span class="tm-panel__title">Menu</span>
+    <button id="tm-panel-close" class="tm-iconbtn" type="button" aria-label="Close menu">
+      <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"
+           fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+  </div>
+  <button id="tm-panel-backup"   class="tm-panel__item" type="button">Backup</button>
+  <button id="tm-panel-settings" class="tm-panel__item" type="button">Settings</button>
+  <button id="tm-panel-about"    class="tm-panel__item" type="button">About</button>
+</aside>
+
+<!-- ============================================================
+     Toasts + dev badge
+     ============================================================ -->
+<div id="tm-toasts" class="tm-toasts" aria-live="polite" aria-atomic="true"></div>
+<div id="tm-dev-badge" class="tm-dev-badge" hidden>Dev data</div>
+
+<!-- ============================================================
+     Scripts — dependency order, no ES modules
+     ============================================================ -->
+<script src="js/config.js"></script>
+<script src="js/util.js"></script>
+<script src="js/store.js"></script>
+<script src="js/timeline.js"></script>
+<script src="js/slip.js"></script>
+<script src="js/today.js"></script>
+<script src="js/home.js"></script>
+<script src="js/shell.js"></script>
+
+</body>
+</html>

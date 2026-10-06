@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tamga — Tests</title>
+
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+
+<style>
+  body {
+    padding: 24px;
+    font-family: var(--tm-font-sans);
+    font-size: 13.5px;
+    line-height: 1.5;
+    background: var(--tm-bg);
+    color: var(--tm-text);
+    max-width: 960px;
+    margin: 0 auto;
+    font-variant-numeric: tabular-nums;
+  }
+  h1 {
+    font-family: var(--tm-font-display);
+    font-size: 22px;
+    font-weight: 400;
+    margin: 0 0 4px;
+    letter-spacing: -0.005em;
+  }
+  .sub {
+    font-size: 13px;
+    color: var(--tm-text-muted);
+    margin: 0 0 20px;
+  }
+  #summary {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 16px;
+    padding: 10px 14px;
+    border-radius: 4px;
+    background: var(--tm-surface);
+    border: 1px solid var(--tm-border);
+  }
+  .t-pass { color: var(--tm-success); }
+  .t-fail { color: var(--tm-danger); }
+  #summary.t-pass { border-color: var(--tm-success); }
+  #summary.t-fail { border-color: var(--tm-danger); }
+  .t-case {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--tm-border);
+    word-break: break-word;
+  }
+  .t-case:last-child { border-bottom: 0; }
+  #out { margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>Tamga — tests</h1>
+<p class="sub">
+  Zero-dependency assertion runner. Open this file directly from <code>file://</code>.
+  All tests are pure — no network, no canvas rendering, no timers except where the
+  test itself schedules one.
+</p>
+
+<div id="summary">Running…</div>
+<div id="out"></div>
+
+<!-- ============================================================
+     1. Application modules under test
+     ============================================================ -->
+<script src="js/config.js"></script>
+<script src="js/util.js"></script>
+<script src="js/store.js"></script>
+<script src="js/timeline.js"></script>
+<script src="js/slip.js"></script>
+<script src="js/today.js"></script>
+
+<!-- ============================================================
+     2. Tiny assertion runner — no libraries
+     ============================================================ -->
+<script>
+(function () {
+  'use strict';
+
+  var TM = (window.TM = window.TM || {});
+  var cases = [];
+
+  function test(name, fn) {
+    if (typeof name !== 'string' || typeof fn !== 'function') return;
+    cases.push({ name: name, fn: fn });
+  }
+
+  function fmt(v) {
+    if (v instanceof Date) return 'Date(' + v.getTime() + ')';
+    if (typeof v === 'string') return JSON.stringify(v);
+    try { return JSON.stringify(v); } catch (_) { return String(v); }
+  }
+
+  function eq(a, b, msg) {
+    var pass = Object.is(a, b)
+      || (a instanceof Date && b instanceof Date && a.getTime() === b.getTime());
+    if (!pass) {
+      throw new Error((msg || 'eq') + ' — expected ' + fmt(b) + ', got ' + fmt(a));
+    }
+  }
+
+  function ok(v, msg) {
+    if (!v) throw new Error(msg || 'expected truthy');
+  }
+
+  function run() {
+    var out = document.getElementById('out');
+    var summary = document.getElementById('summary');
+    if (!out || !summary) return;
+
+    while (out.firstChild) out.removeChild(out.firstChild);
+
+    var pass = 0;
+    var fail = 0;
+    var failures = [];
+
+    for (var i = 0; i < cases.length; i++) {
+      var c = cases[i];
+      var row = document.createElement('div');
+      try {
+        c.fn({ eq: eq, ok: ok, test: test });
+        row.className = 't-case t-pass';
+        row.textContent = '\u2713  ' + c.name;
+        pass++;
+      } catch (e) {
+        row.className = 't-case t-fail';
+        row.textContent = '\u2717  ' + c.name + '  \u2014  ' +
+                          (e && e.message ? e.message : e);
+        fail++;
+        failures.push(c.name);
+      }
+      out.appendChild(row);
+    }
+
+    summary.textContent = pass + ' passed, ' + fail + ' failed (total ' + cases.length + ')';
+    summary.className = fail ? 't-fail' : 't-pass';
+    window.__TM_TEST_RESULT__ = {
+      pass: pass, fail: fail, total: cases.length, failures: failures
+    };
+    if (typeof console !== 'undefined' && console.log) {
+      console.log('[tests] ' + pass + ' passed, ' + fail + ' failed of ' + cases.length);
+    }
+  }
+
+  TM.tests = { test: test, run: run, _cases: cases };
+})();
+</script>
+
+<!-- ============================================================
+     3. Shell (R3) — needed by shell.test.js
+     ============================================================ -->
+<script src="js/shell.js"></script>
+
+<!-- ============================================================
+     4. Test suites
+     ============================================================ -->
+<script src="js/tests/util.test.js"></script>
+<script src="js/tests/today.test.js"></script>
+<script src="js/tests/edge.test.js"></script>
+<script src="js/tests/shell.test.js"></script>
+<script src="js/tests/timeline.test.js"></script>
+<script src="js/tests/slip.test.js"></script>
+<script src="js/tests/home.test.js"></script>
+
+<!-- ============================================================
+     5. Run
+     ============================================================ -->
+<script>TM.tests.run();</script>
+
+<!-- ============================================================
+     6. Fixtures (kept in sync with index.html; removed in a future pass)
+     ============================================================ -->
+<template id="tm-hook-fixture">
+  <section class="tm-hook" aria-label="Memory versus record">
+    <p class="tm-visually-hidden">
+      Memory drifts from 'might drop' to 'I called the drop'. The Tamga record
+      still says 'might drop'.
+    </p>
+    <div class="tm-hook__panels">
+      <div class="tm-hook__panel">
+        <p class="tm-hook__label">What you remember</p>
+        <div class="tm-hook__stack" aria-hidden="true">
+          <span class="tm-hook__line tm-hook__line--1">BTC might drop.</span>
+          <span class="tm-hook__line tm-hook__line--2">I said BTC would drop.</span>
+          <span class="tm-hook__line tm-hook__line--3">I called the drop.</span>
+        </div>
+      </div>
+      <div class="tm-hook__panel">
+        <p class="tm-hook__label">What Tamga kept</p>
+        <p class="tm-hook__locked">BTC might drop. Resistance at 81.8K, target 80.2K.</p>
+        <p class="tm-hook__meta">Locked 09:12, never edited</p>
+      </div>
+    </div>
+    <p class="tm-hook__tag">Memory edits itself. The record doesn't.</p>
+    <span class="tm-hook__ex" aria-hidden="true">Illustrative example</span>
+  </section>
+</template>
+
+</body>
+</html>

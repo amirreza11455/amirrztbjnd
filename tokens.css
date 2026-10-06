@@ -1,0 +1,93 @@
+/* ============================================================================
+   Tamga — Design Tokens (graphite + ice-blue accent)
+   ----------------------------------------------------------------------------
+   Neutral graphite surfaces, one conceptual accent (ice blue = "locked").
+   No blur, no glow, no grain. Radii <= 6px.
+   Fonts: Instrument Serif (display), Inter (everything else).
+   --tm-font-mono is temporarily aliased to sans (removed in R8).
+   ============================================================================ */
+
+:root {
+  /* ---------- colors ---------- */
+  --tm-bg:            #0d0e10;
+  --tm-bg-elev:       #131518;
+  --tm-surface:       #111316;
+  --tm-raised:        #171a1e;
+
+
+  --tm-border:        rgba(255, 255, 255, 0.09);
+  --tm-border-strong: rgba(255, 255, 255, 0.20);
+
+  --tm-text:          #e9eaec;
+  --tm-text-muted:    #8e939c;
+  --tm-text-faint:    #7d828b;
+
+  /* Accent is neutral in R2 — the ice-blue "locked" tone is a separate token. */
+  --tm-accent:        #e9eaec;
+  --tm-accent-soft:   rgba(255, 255, 255, 0.12);
+
+  --tm-success:       #4cb487;
+  --tm-danger:        #d65b52;
+  --tm-warning:       #9aa3b0;   /* cool gray — no yellow in this palette */
+  --tm-neutral:       #8e939c;
+
+  /* ---------- new in R2 ---------- */
+  --tm-lock:          #8fb4cc;   /* ice blue — the "locked" concept */
+  --tm-bar:           #2a2d33;   /* track / underlay */
+  --tm-paper:         #e7e9ec;   /* paper slip */
+  --tm-ink:           #15171a;   /* ink on paper */
+  --tm-stamp-correct: #1d7a52;
+  --tm-stamp-wrong:   #b3382f;
+  --tm-stamp-lock:    #2f5873;
+
+  /* ---------- radii (<= 6px) ---------- */
+  --tm-r-xs:   2px;
+  --tm-r-sm:   3px;
+  --tm-r-md:   4px;
+  --tm-r-lg:   6px;
+  --tm-r-xl:   6px;
+  --tm-r-pill: 6px;
+
+  /* ---------- shadows — only inset highlight ---------- */
+  --tm-shadow-1: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --tm-shadow-2: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --tm-shadow-3: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+  /* ---------- fonts ---------- */
+  --tm-font-display: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+  --tm-font-sans:    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto,
+                     'Helvetica Neue', Arial, sans-serif;
+
+  /* ---------- spacing (scale: 4/8/12/16/24/32/48/64/96) ---------- */
+  --tm-s-1:  4px;
+  --tm-s-2:  8px;
+  --tm-s-3:  12px;
+  --tm-s-4:  16px;
+  --tm-s-5:  20px;   /* legacy — not on scale, do not use in new code */
+  --tm-s-6:  24px;
+  --tm-s-8:  32px;
+  --tm-s-10: 40px;   /* legacy — not on scale */
+  --tm-s-12: 48px;
+  --tm-s-16: 64px;
+  --tm-s-24: 96px;
+
+  /* ---------- z-index ---------- */
+  --tm-z-base:   1;
+  --tm-z-nav:    40;
+  --tm-z-panel:  60;
+  --tm-z-toast:  80;
+  --tm-z-modal:  100;
+
+  /* ---------- motion ---------- */
+  --tm-dur-fast: 120ms;
+  --tm-dur:      220ms;
+  --tm-dur-slow: 420ms;
+  --tm-ease:     cubic-bezier(0.2, 0.8, 0.2, 1);
+  --tm-ease-in:  cubic-bezier(0.4, 0, 1, 1);
+  --tm-ease-out: cubic-bezier(0, 0, 0.2, 1);
+
+  /* ---------- layout ---------- */
+  --tm-max-w:    1240px;   /* R3 */
+  --tm-gutter:   28px;     /* R3 — explicit, off-scale */
+  --tm-topbar-h: 68px;     /* R3 */
+}
